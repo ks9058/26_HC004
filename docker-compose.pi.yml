@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # 1. DB와 MQTT는 그대로 유지 (ARM64 이미지를 자동으로 가져옵니다)
+  db:
+    image: postgres:15
+    container_name: aria-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: aria-mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: always
+
+  mqtt-subscriber:
+    build: ./server
+    container_name: aria-subscriber
+    depends_on:
+      - db
+      - mqtt-broker
+    environment:
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME}
+      - DB_USER=user
+      - DB_PASS=${DB_PASSWORD}
+      - MQTT_BROKER=mqtt-broker
+    restart: always
+
+  event-ai:
+    build: 
+      context: ./ai/event_ai
+      dockerfile: Dockerfile.pi
+    container_name: aria-event-ai
+    env_file: .env
+    volumes:
+      - ./ai/event_ai:/workspace
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    depends_on:
+      - db
+    restart: always
